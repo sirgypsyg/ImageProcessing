@@ -4,6 +4,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 
 public class ImageProcessor{
     private BufferedImage image;
@@ -22,11 +23,10 @@ public class ImageProcessor{
         return value;
     }
 
-    // Method 2
-    // To adjust the brightness of image
+
     public void adjustBrightness(int brightnessValue)
     {
-        // Declaring an array for spectrum of colors
+
         int rgb[];
 
         // Outer loop for width of image
@@ -49,6 +49,7 @@ public class ImageProcessor{
 
                 // Using setPixel() method
                 image.getRaster().setPixel(i, j, arr);
+
             }
         }
     }
@@ -91,6 +92,43 @@ public class ImageProcessor{
             thread.join();
         }
     }
+
+    public void calculateHistogram() throws InterruptedException {
+        int cores = Runtime.getRuntime().availableProcessors();
+        int chunk = height / cores;
+        int[][] histogram = new int[cores][256];
+
+        Thread threads[] = new Thread[cores];
+        for (int i = 0; i < cores; ++i) {
+            int threadIndex = i;
+            threads[i] = new Thread(() -> {
+                Arrays.fill(histogram[threadIndex], 0);
+                int startline = threadIndex * chunk;
+                int endline = (threadIndex == cores - 1) ? height : startline + chunk;
+
+                for (int y = startline; y < endline; y++) {
+                    for (int x = 0; x < width; x++) {
+                        int rgb = image.getRGB(x, y);
+                        int r = (0xFF0000 & rgb) >> 16;
+                        ++histogram[threadIndex][r];
+                    }
+                }
+            });
+        }
+        for (int i = 0; i < cores; ++i)
+            threads[i].start();
+
+        for (int i = 0; i < cores; ++i)
+            threads[i].join();
+        int[] finalHistogram = new int[256];
+        for (int i = 0; i < cores; ++i)
+            for (int j = 0; j < 256; ++j)
+                finalHistogram[j] += histogram[i][j];
+
+        for (int i = 0; i < 256; ++i)
+            System.out.println(i + ", " + finalHistogram[i] + " ");
+}
+
     public void saveImage(String path) throws IOException {
         ImageIO.write(image, "png", new File(path));
     }
