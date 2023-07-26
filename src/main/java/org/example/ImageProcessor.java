@@ -39,11 +39,11 @@ public class ImageProcessor{
 
                 // Using(calling) method 1
                 int red
-                        = truncate(rgb[0] + brightnessValue);
+                        = Math.min(0, rgb[0] + brightnessValue);
                 int green
-                        = truncate(rgb[1] + brightnessValue);
+                        = Math.min(0, rgb[1] + brightnessValue);
                 int blue
-                        = truncate(rgb[2] + brightnessValue);
+                        = Math.min(0, rgb[2] + brightnessValue);
 
                 int arr[] = { red, green, blue };
 
