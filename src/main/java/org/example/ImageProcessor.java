@@ -1,5 +1,7 @@
 package org.example;
 
+import java.awt.color.ColorSpace;
+import java.awt.image.ColorConvertOp;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -94,14 +96,13 @@ public class ImageProcessor{
         }
     }
 
-    public void calculateHistogram() throws InterruptedException {
+    public void equalize() throws InterruptedException {
         int cores = Runtime.getRuntime().availableProcessors();
         int chunk = height / cores;
 
         int[][] rhistogram = new int[cores][256];
         int[][] ghistogram = new int[cores][256];
         int[][] bhistogram = new int[cores][256];
-
 
         Thread threads[] = new Thread[cores];
         for (int i = 0; i < cores; ++i) {
@@ -180,6 +181,98 @@ public class ImageProcessor{
         }
 
 }
+
+
+    public void equalizeToCIEXYZ() throws InterruptedException {
+        int cores = Runtime.getRuntime().availableProcessors();
+        int chunk = height / cores;
+
+        ColorSpace RGB = ColorSpace.getInstance(ColorSpace.CS_sRGB);
+        ColorSpace CIEXYZ = ColorSpace.getInstance(ColorSpace.CS_CIEXYZ);
+
+        ColorConvertOp op = new ColorConvertOp(RGB, CIEXYZ, null);
+        image = op.filter(image, null);
+
+        int[][] rhistogram = new int[cores][256];
+        int[][] ghistogram = new int[cores][256];
+        int[][] bhistogram = new int[cores][256];
+
+        Thread threads[] = new Thread[cores];
+        for (int i = 0; i < cores; ++i) {
+            int threadIndex = i;
+            threads[i] = new Thread(() -> {
+                Arrays.fill(rhistogram[threadIndex], 0);
+                Arrays.fill(ghistogram[threadIndex], 0);
+                Arrays.fill(bhistogram[threadIndex], 0);
+
+                int startline = threadIndex * chunk;
+                int endline = (threadIndex == cores - 1) ? height : startline + chunk;
+
+                for (int y = startline; y < endline; y++) {
+                    for (int x = 0; x < width; x++) {
+                        int rgb = image.getRGB(x, y);
+
+                        int r = (rgb >> 16) & 0xFF;
+                        ++rhistogram[threadIndex][r];
+
+                        int g = (rgb >> 8) & 0xFF;
+                        ++ghistogram[threadIndex][g];
+
+                        int b = rgb & 0xFF;
+                        ++bhistogram[threadIndex][b];
+                    }
+                }
+            });
+        }
+        for (int i = 0; i < cores; ++i)
+            threads[i].start();
+        for (int i = 0; i < cores; ++i)
+            threads[i].join();
+
+        int[] finalRedHistogram = new int[256];
+        int[] finalGreenHistogram = new int[256];
+        int[] finalBlueHistogram = new int[256];
+
+        for (int i = 0; i < cores; ++i)
+            for (int j = 0; j < 256; ++j){
+                finalRedHistogram[j] += rhistogram[i][j];
+                finalGreenHistogram[j] += ghistogram[i][j];
+                finalBlueHistogram[j] += bhistogram[i][j];
+            }
+
+        //count distributors
+        int[] rLut = getLut(finalRedHistogram);
+        int[] gLut = getLut(finalGreenHistogram);
+        int[] bLut = getLut(finalBlueHistogram);
+
+
+        for(int i=0; i<image.getWidth(); i++) {
+            for(int j=0; j<image.getHeight(); j++) {
+
+                // Get pixels by R, G, B
+                int alpha = new Color(image.getRGB (i, j)).getAlpha();
+                int red = new Color(image.getRGB (i, j)).getRed();
+                int green = new Color(image.getRGB (i, j)).getGreen();
+                int blue = new Color(image.getRGB (i, j)).getBlue();
+
+                // Set new pixel values using the histogram lookup table
+                red = rLut[red];
+                green = gLut[green];
+                blue = bLut[blue];
+
+                // Return back to original format
+                int newPixel = colorToRGB(alpha, red, green, blue);
+
+                // Write pixels into image
+                image.setRGB(i, j, newPixel);
+
+            }
+        }
+        ColorConvertOp toRGB = new ColorConvertOp(CIEXYZ, RGB, null);
+        image = toRGB.filter(image, null);
+
+
+    }
     private static int colorToRGB(int alpha, int red, int green, int blue) {
 
         int newPixel = 0;
